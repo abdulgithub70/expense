@@ -1,0 +1,276 @@
+CREATE TABLE user_expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  remaining_balance INT DEFAULT 0,
+  total_credit_amount INT DEFAULT 0,
+  total_debit_amount INT DEFAULT 0,
+  credit_transactions JSON DEFAULT NULL,
+  debit_transactions JSON DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+//
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+//
+INSERT INTO user_expenses (
+  userId,
+  remaining_balance,
+  total_credit_amount,
+  total_debit_amount,
+  credit_transactions,
+  debit_transactions
+)
+VALUES (
+  1,                          -- Assuming userId is 1
+  800,                        -- remaining_balance = 1000 - 200
+  1000,
+  200,                        -- Save total_debit_amount as positive number (for clarity)
+  JSON_ARRAY(700, 300),
+  JSON_ARRAY(-150, -50)
+);
+//
+UPDATE user_expenses
+SET 
+  credit_transactions = JSON_ARRAY_APPEND(credit_transactions, '$', 500),
+  total_credit_amount = total_credit_amount + 500,
+  remaining_balance = total_credit_amount + 500 - total_debit_amount
+WHERE userId = 1;
+//
+UPDATE user_expenses
+SET 
+  debit_transactions = JSON_ARRAY_APPEND(debit_transactions, '$', 'Lunch -80'),
+  total_debit_amount = total_debit_amount + 80,
+  remaining_balance = total_credit_amount - (total_debit_amount + 80)
+WHERE userId = 1;
+
+//update 
+INSERT INTO user_expenses (
+  userId,
+  remaining_balance,
+  total_credit_amount,
+  total_debit_amount,
+  credit_transactions,
+  debit_transactions
+)
+VALUES (
+  2,
+  800,  -- 1000 - 200 (lunch) = 800
+  1000,
+  200,  -- store as positive
+  JSON_ARRAY(
+    JSON_OBJECT("title", "salary", "amount", 1000),
+    JSON_OBJECT("title", "bonus", "amount", 500)
+  ),
+  JSON_ARRAY(
+    JSON_OBJECT("title", "lunch", "amount", 200)
+  )
+);
+//
+
+UPDATE user_expenses
+SET 
+  credit_transactions = JSON_ARRAY_APPEND(
+    credit_transactions, 
+    '$', 
+    JSON_OBJECT("title", "referral", "amount", 500)
+  ),
+  total_credit_amount = total_credit_amount + 500,
+  remaining_balance = total_credit_amount + 500 - total_debit_amount
+WHERE userId = 2;
+//
+
+UPDATE user_expenses
+SET 
+  debit_transactions = JSON_ARRAY_APPEND(
+    debit_transactions, 
+    '$', 
+    JSON_OBJECT("title", "lunch", "amount", 80)
+  ),
+  total_debit_amount = total_debit_amount + 80,
+  remaining_balance = total_credit_amount - (total_debit_amount + 80)
+WHERE userId = 2;
+
+//
+//--------------------------------------------------->>>>>>>>>>>>>>>
+import { useEffect, useState } from 'react';
+import './Dashboard.css'; 
+const Dashboard = () => {
+  const [user, setUser] = useState(null);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [text, setText] = useState('');
+  const [amount, setAmount] = useState('');
+  const userId = localStorage.getItem('userId');
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const res = await fetch(`http://localhost:3000/dashboard/${userId}`);
+        const data = await res.json();
+        console.log(data);
+        if (data.success) {
+          setUser(data.user);
+        } else {
+          alert(data.message || 'Failed to fetch user details');
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        alert('Failed to fetch user data.');
+      }
+    };
+
+    if (userId) {
+      fetchUserData();
+    } else {
+      alert('User ID not found in local storage');
+    }
+  }, [userId]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      const response = await axios.post(`/add-transaction/${user.userId}`, {
+        title: text,
+        amount: parseFloat(amount),
+      });
+
+      if (response.data.success) {
+        alert('Transaction Added!');
+        // Optionally refresh or refetch user data here
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Failed to add transaction');
+    }
+  if (!user) return <p>Loading...</p>;
+  }
+  return (
+    <div className="dashboard-container">
+      <h2 className="dashboard-heading">Dashboard</h2>
+
+      <div className="user-info">
+        <h3>User ID: {user.userId}</h3>
+        <h3>Balance: ₹{user.remaining_balance}</h3>
+        <p><strong>Total Credit:</strong> ₹{user.total_credit_amount}</p>
+        <p><strong>Total Expense:</strong> ₹{user.total_debit_amount}</p>
+      </div>
+
+      
+
+      <form className="expense-form" onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="text">Expense Detail</label>
+        <input
+          type="text"
+          id="text"
+          name="text"
+          placeholder="Enter your Expense Detail..."
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="amount">Amount</label>
+        <input
+          type="number"
+          id="amount"
+          name="amount"
+          placeholder="Enter your Amount..."
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </div>
+
+      <button type="submit">Add Expense</button>
+    </form>
+
+      <div className="expense-list">
+  {user.credit_transactions.map((credit, index) => (
+    <div className="expense-item" key={`credit-${index}`}>
+      <button className="delete-button">X</button>
+      <div className="expense-description">{credit.title}</div>
+      <div className="expense-amount" style={{ color: "rgb(39, 174, 96)" }}>
+        ₹{credit.amount}
+      </div>
+    </div>
+  ))}
+
+  {user.debit_transactions.map((debit, index) => (
+    <div className="expense-item" key={`debit-${index}`}>
+      <button className="delete-button">X</button>
+      <div className="expense-description">{debit.title}</div>
+      <div className="expense-amount" style={{ color: "rgb(192, 57, 43)" }}>
+        ₹-{debit.amount}
+      </div>
+    </div>
+  ))}
+</div>
+
+    </div>
+  );
+
+};
+
+export default Dashboard;
+
+
+//-----------------------------------------------------------
+
+Define POST route '/delete-transaction/:userId'
+  Log: "Delete transaction endpoint hit"
+
+  Extract userId from URL parameters
+  Extract 'type' and 'index' from request body
+    // 'type' should be either 'credit' or 'debit'
+  
+  IF type is not 'credit' or 'debit':
+    Return error response (400 Bad Request): "Invalid transaction type"
+
+  Query database: SELECT * FROM user_expenses WHERE userId = ?
+  
+  IF error occurs in query:
+    Return error response (500): "DB error"
+
+  IF no user found:
+    Return error response (404): "User not found"
+
+  Parse credit and debit transactions from user's record
+  Log credit and debit transaction arrays
+
+  IF type is 'credit':
+    IF index is invalid (out of range):
+      Return error response (400): "Invalid credit index"
+    Remove credit transaction at specified index
+
+  ELSE IF type is 'debit':
+    IF index is invalid (out of range):
+      Return error response (400): "Invalid debit index"
+    Remove debit transaction at specified index
+
+  Recalculate:
+    totalCredit = sum of all remaining credit amounts
+    totalDebit = sum of all remaining debit amounts
+    remainingBalance = totalCredit - totalDebit
+
+  Update user_expenses in DB with:
+    - Updated credit_transactions (JSON string)
+    - Updated debit_transactions (JSON string)
+    - Updated total_credit_amount
+    - Updated total_debit_amount
+    - Updated remaining_balance
+    - WHERE userID = userId
+
+  IF update fails:
+    Return error response (500): "Failed to update DB"
+
+  ELSE:
+    Return success response: "Transaction deleted"
